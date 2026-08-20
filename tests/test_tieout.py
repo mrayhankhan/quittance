@@ -11,13 +11,13 @@ from datetime import date
 
 import pytest
 
-from chukta.generate import generate
-from chukta.matching import layer0_exact, settlement_nets, subset_sum
-from chukta.money import apply_bps, fmt, inr, rupees, within
-from chukta.pipeline import run
-from chukta.schema import BankLine, Layer
-from chukta.tax import ItcStatus, reconcile_itc
-from chukta.verify import verify
+from tieout.generate import generate
+from tieout.matching import layer0_exact, settlement_nets, subset_sum
+from tieout.money import apply_bps, fmt, inr, rupees, within
+from tieout.pipeline import run
+from tieout.schema import BankLine, Layer
+from tieout.tax import ItcStatus, reconcile_itc
+from tieout.verify import verify
 
 # ---------------------------------------------------------------- money ----
 
@@ -134,7 +134,7 @@ def test_layer0_refuses_when_amount_disagrees():
 
 
 def test_verifier_rejects_arithmetic_mismatch():
-    from chukta.schema import Match
+    from tieout.schema import Match
 
     ds = generate(seed=3, n_payments=100)
     line = ds.bank_lines[0]
@@ -155,7 +155,7 @@ def test_verifier_rejects_arithmetic_mismatch():
 
 
 def test_verifier_rejects_low_confidence():
-    from chukta.schema import Match
+    from tieout.schema import Match
 
     ds = generate(seed=3, n_payments=100)
     line = ds.bank_lines[0]
@@ -166,7 +166,7 @@ def test_verifier_rejects_low_confidence():
 
 def test_verifier_blocks_double_spend():
     """One settlement cannot reconcile two different bank lines."""
-    from chukta.schema import Match
+    from tieout.schema import Match
 
     ds = generate(seed=5, n_payments=100)
     nets = settlement_nets(ds.recon_rows)

@@ -8,16 +8,16 @@ install:
 	uv pip install --python $(PY) -e ".[dev]"
 
 demo:
-	$(PY) -m chukta --offline
+	$(PY) -m tieout --offline
 
 demo-llm:
-	$(PY) -m chukta
+	$(PY) -m tieout
 
 test:
 	$(PY) -m pytest tests/ -q
 
 lint:
-	$(PY) -m ruff check chukta tests
+	$(PY) -m ruff check tieout tests
 
 clean:
 	rm -rf $(VENV) .pytest_cache **/__pycache__

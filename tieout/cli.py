@@ -1,4 +1,4 @@
-"""Command line entry point: ``python -m chukta``."""
+"""Command line entry point: ``python -m tieout``."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def _head(title: str) -> None:
 
 
 def render(report: Report) -> None:
-    _head("CHUKTA · settlement reconciliation")
+    _head("TIEOUT · settlement reconciliation")
     print(f"  seed {report.dataset_seed}   bank lines {report.bank_lines}   "
           f"engine {report.engine}   {report.elapsed_ms:.0f} ms")
 
@@ -73,7 +73,7 @@ def render(report: Report) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(prog="chukta", description=__doc__)
+    ap = argparse.ArgumentParser(prog="tieout", description=__doc__)
     ap.add_argument("--seed", type=int, default=20260905)
     ap.add_argument("--payments", type=int, default=500)
     ap.add_argument("--offline", action="store_true",
