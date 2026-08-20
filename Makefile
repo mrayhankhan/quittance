@@ -8,16 +8,16 @@ install:
 	uv pip install --python $(PY) -e ".[dev]"
 
 demo:
-	$(PY) -m tieout --offline
+	$(PY) -m quittance --offline
 
 demo-llm:
-	$(PY) -m tieout
+	$(PY) -m quittance
 
 test:
 	$(PY) -m pytest tests/ -q
 
 lint:
-	$(PY) -m ruff check tieout tests
+	$(PY) -m ruff check quittance tests
 
 clean:
 	rm -rf $(VENV) .pytest_cache **/__pycache__

@@ -1,7 +1,8 @@
-# Tieout
+# Quittance
 
-_**tie-out** (auditing) — to agree a balance to the document that supports it.
-The last quality gate before the report goes out._
+_**quittance** (n.) — release or discharge from a debt or obligation, once it
+is proven paid; the document that certifies it. 14th century, via Old French
+*quitance*. This is the receipt the settlement never gives you._
 
 Three-way settlement reconciliation for Indian merchants, built so that a
 language model can propose a match but never close the books.
@@ -166,7 +167,7 @@ a benchmark.
 ## Layout
 
 ```
-tieout/
+quittance/
   money.py      paisa arithmetic, half-up bps rounding, Indian digit grouping
   schema.py     domain model, exception taxonomy
   generate.py   seeded generator with defect injection

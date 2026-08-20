@@ -11,13 +11,13 @@ from datetime import date
 
 import pytest
 
-from tieout.generate import generate
-from tieout.matching import layer0_exact, settlement_nets, subset_sum
-from tieout.money import apply_bps, fmt, inr, rupees, within
-from tieout.pipeline import run
-from tieout.schema import BankLine, Layer
-from tieout.tax import ItcStatus, reconcile_itc
-from tieout.verify import verify
+from quittance.generate import generate
+from quittance.matching import layer0_exact, settlement_nets, subset_sum
+from quittance.money import apply_bps, fmt, inr, rupees, within
+from quittance.pipeline import run
+from quittance.schema import BankLine, Layer
+from quittance.tax import ItcStatus, reconcile_itc
+from quittance.verify import verify
 
 # ---------------------------------------------------------------- money ----
 
@@ -134,7 +134,7 @@ def test_layer0_refuses_when_amount_disagrees():
 
 
 def test_verifier_rejects_arithmetic_mismatch():
-    from tieout.schema import Match
+    from quittance.schema import Match
 
     ds = generate(seed=3, n_payments=100)
     line = ds.bank_lines[0]
@@ -155,7 +155,7 @@ def test_verifier_rejects_arithmetic_mismatch():
 
 
 def test_verifier_rejects_low_confidence():
-    from tieout.schema import Match
+    from quittance.schema import Match
 
     ds = generate(seed=3, n_payments=100)
     line = ds.bank_lines[0]
@@ -166,7 +166,7 @@ def test_verifier_rejects_low_confidence():
 
 def test_verifier_blocks_double_spend():
     """One settlement cannot reconcile two different bank lines."""
-    from tieout.schema import Match
+    from quittance.schema import Match
 
     ds = generate(seed=5, n_payments=100)
     nets = settlement_nets(ds.recon_rows)
