@@ -44,9 +44,9 @@ def layer0_exact(ds: Dataset) -> tuple[list[Match], list[BankLine]]:
 
     by_utr: dict[str, list[str]] = defaultdict(list)
     for row in ds.recon_rows:
-        if row.settlement_utr and row.settlement_id:
-            if row.settlement_id not in by_utr[row.settlement_utr]:
-                by_utr[row.settlement_utr].append(row.settlement_id)
+        if (row.settlement_utr and row.settlement_id
+                and row.settlement_id not in by_utr[row.settlement_utr]):
+            by_utr[row.settlement_utr].append(row.settlement_id)
 
     matches: list[Match] = []
     unresolved: list[BankLine] = []

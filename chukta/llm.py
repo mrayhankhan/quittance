@@ -112,7 +112,7 @@ class AnthropicClient:
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text")
-        match = re.search(r"\{.*\}", text, re.S)
+        match = re.search(r"\{.*\}", text, re.DOTALL)
         if not match:
             return []
         try:
@@ -126,7 +126,9 @@ def build_client(utr_index: dict[str, str], force_offline: bool = False) -> LLMC
         return HeuristicClient(utr_index)
     try:
         return AnthropicClient()
-    except Exception:
+    except (ImportError, RuntimeError, ValueError):
+        # SDK missing or misconfigured. Fall back rather than fail the run --
+        # the report names the engine, so the substitution is never silent.
         return HeuristicClient(utr_index)
 
 
