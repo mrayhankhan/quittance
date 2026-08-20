@@ -1,0 +1,102 @@
+# Build log
+
+Running notes on what broke. Kept as I went, not reconstructed afterwards.
+
+---
+
+## 1. The test suite caught a double-spend in Layer 0
+
+**Symptom.** `test_layer0_never_claims_a_settlement_twice` failed on seed 7.
+Two bank lines were both reconciling to the same settlement.
+
+**What I assumed first.** That the duplicate-UTR defect injector was buggy and
+producing a UTR collision the real world wouldn't.
+
+**Why that was wrong.** The injector was fine — it does exactly what a bank
+feed does when it copies a narration onto the wrong line. The bug was mine.
+Layer 0 indexed `settlement_utr -> settlement_id` and asserted the *settlement*
+side was unambiguous. It never checked the *bank* side. Two lines carrying the
+same UTR each looked up the same settlement, and each got a match, so the same
+money reconciled twice and the books balanced on a lie.
+
+**Fix.** Layer 0 now tracks claimed settlements and declines a second claim.
+
+**Structural change.** The claim check is not local to Layer 0. Layer 3 enforces
+the same invariant independently for anything the model proposes, so the
+property holds even if a future layer forgets it. One invariant, two enforcement
+points, because this is the class of bug that silently balances.
+
+---
+
+## 2. `slots=True` broke the verifier's accept path
+
+**Symptom.** `AttributeError: 'Dataset' object has no attribute '__dict__'`.
+
+**Root cause.** I'd written `Match(**{**p.__dict__, "verified": True})` to copy
+a match with one field changed. Every dataclass here uses `slots=True`, so
+there is no `__dict__`.
+
+**Why it hid.** It only fires when the verifier *accepts* a proposal. Early on
+the offline Layer 2 client never produced an acceptable one, so the accept path
+had literally never executed. The tests passed while a crash sat on the main
+path.
+
+**Fix.** `dataclasses.replace(p, verified=True)`.
+
+**Lesson.** Green tests meant the branch was untested, not that it worked. I now
+assert on rejected *and* accepted counts rather than just "not accepted".
+
+---
+
+## 3. Subset-sum was returning a coin flip
+
+**Symptom.** Not a crash — a design review of my own code. The solver returned
+the first exact subset the DFS reached.
+
+**Why that's wrong.** A clubbed credit of ₹1,000 against settlements of ₹600,
+₹400 and ₹400 has two valid decompositions. Returning either is a guess, and a
+guess that reconciles is worse than no match: it looks correct, posts to the
+ledger, and surfaces in an audit six months later.
+
+**Fix.** The search no longer stops at the first solution. It continues until it
+finds a second, and returns `None` if one exists. Ambiguity is an exception, not
+a tiebreak.
+
+**Cost.** Roughly 2× search on solvable inputs. Worth it.
+
+---
+
+## 4. Double-counted exception money
+
+**Symptom.** Unexplained total was ₹4,72,540.96 across "2 exceptions" for what
+was visibly one problem row.
+
+**Cause.** A bank line whose LLM proposal the verifier rejected got an exception
+from `verify()`, then fell through to the unmatched-lines loop and got a second
+one. The rupees were counted twice.
+
+**Fix.** The unmatched loop skips refs already flagged.
+
+**Structural change.** Added `test_money_conservation`, which asserts matches
+plus distinct exception refs equals the bank-line count. Double counting can no
+longer pass silently.
+
+---
+
+## 5. Two defect injectors were dead code
+
+**Symptom.** `clubbed_credit` never appeared in the injected list.
+
+**Cause.** It requires two bank lines on the same value date, but I was grouping
+settlements one-per-day, so no two ever collided. The injector was unreachable —
+and so, therefore, was the subset-sum path it was written to exercise. I had a
+tested solver that production data could never reach.
+
+**Fix.** Settlements now batch by `(date, rail)` with UPI and cards on separate
+cycles, which is how Razorpay actually settles. Same-day pairs exist, the
+injector fires, and Layer 1's subset-sum resolves one real clubbed credit in the
+demo run.
+
+**Lesson.** A unit test proving the solver works is not evidence the solver is
+ever used. I now check the rule histogram (`Counter(m.rule for m in matches)`)
+after every generator change to confirm each code path is actually reached.
