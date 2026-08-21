@@ -100,3 +100,53 @@ demo run.
 **Lesson.** A unit test proving the solver works is not evidence the solver is
 ever used. I now check the rule histogram (`Counter(m.rule for m in matches)`)
 after every generator change to confirm each code path is actually reached.
+
+---
+
+## 6. My synthetic data got *easier* the bigger it got
+
+**Symptom.** Building the exception queue, I wanted a fuller screen, so I ran
+the pipeline at three scales to pick a good demo size:
+
+```
+  500 payments /  21d -> match  97.6%   exceptions 2
+ 2000 payments /  90d -> match  99.4%   exceptions 3
+ 5000 payments / 120d -> match  99.6%   exceptions 2
+```
+
+The match rate went *up* with volume and the exception count stayed flat.
+
+**Why that's wrong.** Real settlement files do not get cleaner as they grow.
+Defect rates are roughly proportional to throughput — more settlements means
+more truncated narrations, more clubbed credits, more reserve holds. A 5,000-row
+file should be *harder* than a 500-row one, not easier.
+
+**Root cause.** Three of my defect injectors were hard-coded to a fixed count:
+exactly one duplicate UTR, exactly one clubbed credit, exactly one reserve hold
+— the clubbed-credit loop even had a literal `break` after the first hit. Only
+`narration_truncated` scaled, because it happened to be written as
+`len(bank) // 6`. So as the dataset grew, a constant number of defects got
+diluted across an ever-larger denominator.
+
+**Why it mattered more than it looked.** I was about to publish 99.6% as a
+headline number. It would have been a real measurement of a fake problem, and
+the first judge to run `--payments 5000` and see it climb would have correctly
+concluded the data was rigged. It also meant `subset_sum` — the most
+interesting code in the repo — was being exercised exactly once no matter how
+much data I threw at it.
+
+**Fix.** Every injector is now proportional: reserve holds at
+`len(settlements) // 30`, duplicate UTRs at `len(bank) // 40`, clubbed credits
+at `len(bank) // 25`. Hold amounts are randomised rather than a fixed ₹2,500.
+
+Match rate now sits at ~96.5% and stays there across all three scales, and
+subset-sum fires 1 / 6 / 8 times respectively.
+
+**Structural change.** `test_difficulty_does_not_decay_with_volume` runs all
+three sizes and asserts the match rate never exceeds 99% while false matches
+stay at zero. The generator can no longer quietly flatter the matcher.
+
+**Lesson.** I had been checking that each defect *existed*. I had not checked
+that it existed *at the right rate*. For synthetic data, the distribution is
+part of the contract, not a detail of the fixture — and a benchmark you author
+yourself will drift toward flattering you unless something asserts otherwise.

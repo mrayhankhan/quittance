@@ -41,28 +41,47 @@ it could _not_ explain.
 
 ## Results
 
-`make demo` — 524 recon rows, 41 bank credits, seed `20260905`:
+`make demo` — one quarter: 2,096 recon rows, 172 bank credits, seed `20260905`:
 
 ```
 Match rate by layer
-  L0  exact identifier      no AI    32   78.0%
-  L1  constrained solver    no AI     8   19.5%
+  L0  exact identifier      no AI   130   75.6%
+  L1  constrained solver    no AI    36   20.9%
   L2  model, verified by L3    AI     0    0.0%
-                                     40   97.6%  total
+                                    166   96.5%  total
 
 Correctness
   false matches                          0   [PASS]
-  proposals rejected by verifier         1
-  exceptions raised                      2
+  proposals rejected by verifier         5
+  exceptions raised                      7
 ```
 
 Every number above is reproducible: the generator ships with its seed. Clone
 the repo, run `make demo`, get this.
 
-**97.6% of bank credits reconciled. Zero false matches. 100% of the matches
+**96.5% of bank credits reconciled. Zero false matches. 100% of the matches
 were made without a language model.**
 
 That last figure is not a disappointment. It is the finding.
+
+The model proposed five matches this run. The verifier rejected all five. Not
+because they were hallucinations — most named the right settlement — but
+because the arithmetic didn't close to the paisa. See
+[the reserve-hold case](#why-layer-3-exists).
+
+### The exception queue
+
+```bash
+make report
+```
+
+Writes a self-contained HTML file — no server, no dependencies, opens from
+disk — with the seven unresolved rows, each carrying its rupee gap, the layer
+that raised it, and what a reviewer should actually do about it. Keyboard
+triage (`j`/`k`/`r`), filter by type, export decisions as JSON.
+
+An exception that says "unexplained" and nothing else has moved the work, not
+done it.
 
 ## Architecture
 
@@ -83,14 +102,15 @@ CREDIT`, `ADJ-CHGBK-8821` — which is genuinely what a model is good at.
 Adding 312 numbers is not. So it doesn't.
 
 ### Why Layer 3 exists
+<a id="why-layer-3-exists"></a>
 
-In the demo run, Layer 2 nominated a settlement for `bank_0027` and it was
-**right about which settlement it was** — the narration prefix really did match
-that UTR. Layer 3 rejected it anyway, because the bank credit was ₹2,500 short
-of what those rows sum to.
+In the demo run, Layer 2 nominated settlements for five bank lines and was
+**right about which settlement each one was** — the narration prefixes really
+did match those UTRs. Layer 3 rejected all five anyway, because each bank credit
+was short of what its rows sum to.
 
-There was a rolling reserve hold on that batch. The model could not have known;
-nothing in the narration says so. The arithmetic did know.
+There were rolling reserve holds on those batches. The model could not have
+known; nothing in the narration says so. The arithmetic did know.
 
 That is the whole design in one row: the model may propose, the verifier
 decides, and a human gets an exception that names the exact shortfall.
@@ -122,7 +142,7 @@ an audit six months later. A long, honest exception list is the correct output.
 ## Tests
 
 ```
-34 passed
+40 passed
 ```
 
 The load-bearing one runs the full pipeline across five seeds and asserts the
@@ -138,6 +158,11 @@ def test_never_produces_a_false_match(seed):
 `test_most_work_happens_without_a_model` asserts the deterministic layers carry
 ≥90%. If that ever fails, the premise of this architecture is wrong and I'd
 want to know.
+
+`test_difficulty_does_not_decay_with_volume` runs 500 / 2,000 / 5,000 payments
+and asserts the match rate never exceeds 99%. It exists because an earlier
+version of the generator got *easier* the larger the file grew — see
+[DEBUG.md](DEBUG.md) incident 6.
 
 ## Synthetic data
 
@@ -177,6 +202,7 @@ quittance/
   tax.py        ITC reconciliation against GSTR-2B
   pipeline.py   orchestration and metrics
   cli.py        terminal report
+  report.py     the exception queue, as a self-contained HTML file
 ```
 
 ## Not built

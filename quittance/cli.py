@@ -76,13 +76,29 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="quittance", description=__doc__)
     ap.add_argument("--seed", type=int, default=20260905)
     ap.add_argument("--payments", type=int, default=500)
+    ap.add_argument("--days", type=int, default=21)
     ap.add_argument("--offline", action="store_true",
                     help="force the deterministic Layer 2 fallback")
+    ap.add_argument("--report", metavar="PATH", nargs="?", const="out/report.html",
+                    help="write the exception queue to a self-contained HTML file")
+    ap.add_argument("--open", action="store_true",
+                    help="open the report in a browser after writing it")
     args = ap.parse_args()
 
-    ds = generate(seed=args.seed, n_payments=args.payments)
+    ds = generate(seed=args.seed, n_payments=args.payments, days=args.days)
     report = run(ds, force_offline=args.offline)
     render(report)
+
+    if args.report:
+        from .report import write_report
+
+        path = write_report(report, args.report)
+        print(f"  exception queue written to {path}\n")
+        if args.open:
+            import webbrowser
+
+            webbrowser.open(f"file://{path}")
+
     return 1 if report.false_matches else 0
 
 

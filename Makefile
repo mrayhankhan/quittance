@@ -1,4 +1,4 @@
-.PHONY: install demo test lint clean
+.PHONY: install demo report test lint clean
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -8,7 +8,10 @@ install:
 	uv pip install --python $(PY) -e ".[dev]"
 
 demo:
-	$(PY) -m quittance --offline
+	$(PY) -m quittance --offline --payments 2000 --days 90
+
+report:
+	$(PY) -m quittance --offline --payments 2000 --days 90 --report --open
 
 demo-llm:
 	$(PY) -m quittance

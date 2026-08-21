@@ -233,3 +233,75 @@ def test_money_conservation():
     report = run(generate(seed=20260905, n_payments=400), force_offline=True)
     assert len(report.matches) + len({e.ref for e in report.exceptions
                                       if e.ref.startswith("bank_")}) == report.bank_lines
+
+
+# ----------------------------------------------------------------- report ----
+
+
+def test_report_is_self_contained_and_well_formed():
+    """The report must open from disk with no network and no unclosed tags."""
+    from html.parser import HTMLParser
+
+    from quittance.report import render_html
+
+    src = render_html(run(generate(seed=20260905, n_payments=500), force_offline=True))
+
+    void = {"meta", "br", "hr", "input", "img", "link", "source", "col"}
+    stack, errors = [], []
+
+    class V(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag not in void:
+                stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in void:
+                return
+            if not stack or stack[-1] != tag:
+                errors.append(tag)
+            elif stack:
+                stack.pop()
+
+    V().feed(src)
+    assert not stack, f"unclosed tags: {stack}"
+    assert not errors, f"mismatched tags: {errors}"
+    for forbidden in ("http://", "https://", "<script src", "@import"):
+        assert forbidden not in src, f"external reference: {forbidden}"
+
+
+def test_report_escapes_injected_content():
+    """Exception text reaches HTML, so it must be escaped."""
+    from quittance.report import render_html
+    from quittance.schema import Exception_, ExceptionCode
+
+    report = run(generate(seed=1, n_payments=100), force_offline=True)
+    report.exceptions.append(
+        Exception_(ref="<img src=x onerror=alert(1)>", code=ExceptionCode.UNEXPLAINED,
+                   detail="<script>alert('xss')</script>", amount=100)
+    )
+    src = render_html(report)
+    assert "<script>alert" not in src
+    assert "<img src=x onerror" not in src
+    assert "&lt;script&gt;" in src
+
+
+def test_every_exception_code_has_a_next_action():
+    """An exception queue without next actions is a list of complaints."""
+    from quittance.report import NEXT_ACTION
+    from quittance.schema import ExceptionCode
+
+    missing = [c.value for c in ExceptionCode if c not in NEXT_ACTION]
+    assert not missing, f"no guidance for: {missing}"
+
+
+@pytest.mark.parametrize("payments,days", [(500, 21), (2000, 90), (5000, 120)])
+def test_difficulty_does_not_decay_with_volume(payments, days):
+    """Defect rates must scale with throughput.
+
+    Fixed-count injectors made a larger file *easier*, which is the opposite of
+    how real settlement data behaves. This pins the fix.
+    """
+    report = run(generate(n_payments=payments, days=days), force_offline=True)
+    assert report.false_matches == []
+    assert report.match_rate <= 0.99, "data got too easy at scale"
+    assert report.exceptions, "no exceptions raised at any volume"

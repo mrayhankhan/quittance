@@ -209,23 +209,29 @@ def generate(
     # ---- bank lines -------------------------------------------------------
     bank: list[BankLine] = []
     truth: dict[str, str] = {}
-    # One batch has an amount held back as a rolling reserve, so the bank credit
-    # is genuinely less than the rows sum to. Nothing is wrong with the data and
-    # nothing can reconcile it -- a human has to go and find the reserve advice.
-    # It exists here to prove the verifier refuses arithmetic it cannot close,
-    # even when the identifier is perfectly good.
-    held_sid = sorted(settlements)[len(settlements) // 2] if len(settlements) > 3 else None
+    # Some batches have an amount held back as a rolling reserve, so the bank
+    # credit is genuinely less than the rows sum to. Nothing is wrong with the
+    # data and nothing can reconcile it -- a human has to go and find the reserve
+    # advice. These exist to prove the verifier refuses arithmetic it cannot
+    # close, even when the identifier is perfectly good.
+    #
+    # Defect counts scale with the number of batches rather than being fixed.
+    # Fixed counts were a modelling error: they made the file *easier* the larger
+    # it got, which is the opposite of how real settlement data behaves.
+    n_holds = max(1, len(settlements) // 30) if len(settlements) > 3 else 0
+    held = set(rng.sample(sorted(settlements), n_holds)) if n_holds else set()
 
     for n, (sid, idxs) in enumerate(sorted(settlements.items())):
         net = sum(rows[i].net for i in idxs)
         if net <= 0:
             continue  # a fully-refunded batch produces no credit
-        if sid == held_sid:
-            net -= rupees("2500.00")
-            injected.append("reserve_hold x1")
+        if sid in held:
+            net -= rupees(f"{rng.randrange(500, 9000)}.{rng.randrange(0, 100):02d}")
         sdate = rows[idxs[0]].settled_at
         assert sdate is not None
         line_id = f"bank_{n:04d}"
+        if sid in held:
+            injected.append("reserve_hold")
         bank.append(
             BankLine(
                 line_id=line_id,
@@ -272,20 +278,30 @@ def _inject_defects(
         bank[i] = replace(line, narration=line.narration[:35], utr=None)
     notes.append(f"narration_truncated x{max(1, len(bank) // 6)}")
 
-    # Two settlements sharing a UTR. Exact matching must refuse to pick one.
-    a, b = rng.sample(range(len(bank)), 2)
-    if bank[a].utr and bank[b].utr:
-        bank[b] = replace(bank[b], utr=bank[a].utr,
-                          narration=f"NEFT/RZRPY/{bank[a].utr}/SETTLEMENT")
-        notes.append("duplicate_utr x1")
+    # Settlements sharing a UTR, because a bank feed copied one narration onto
+    # another line. Exact matching must refuse to pick between them.
+    n_dupes = max(1, len(bank) // 40)
+    dupes = 0
+    for a, b in zip(rng.sample(range(len(bank)), n_dupes),
+                    rng.sample(range(len(bank)), n_dupes), strict=True):
+        if a != b and bank[a].utr and bank[b].utr:
+            bank[b] = replace(bank[b], utr=bank[a].utr,
+                              narration=f"NEFT/RZRPY/{bank[a].utr}/SETTLEMENT")
+            dupes += 1
+    if dupes:
+        notes.append(f"duplicate_utr x{dupes}")
 
-    # The bank clubs two same-day NEFT credits into a single line and drops
-    # both UTRs. Nothing short of arithmetic can take these apart, which is
-    # what Layer 1's subset-sum is for.
-    for i in range(len(bank) - 1):
+    # The bank clubs same-day NEFT credits into one line and drops both UTRs.
+    # Nothing short of arithmetic can take these apart, which is what Layer 1's
+    # subset-sum is for.
+    target = max(1, len(bank) // 25)
+    clubbed = 0
+    i = 0
+    while i < len(bank) - 1 and clubbed < target:
         first, second = bank[i], bank[i + 1]
-        if first.value_date == second.value_date and first.utr and second.utr:
-            clubbed = BankLine(
+        if (first.value_date == second.value_date and first.utr and second.utr
+                and first.line_id in truth and second.line_id in truth):
+            bank[i] = BankLine(
                 line_id=first.line_id,
                 value_date=first.value_date,
                 narration="NEFT/RZRPY/CONSOLIDATED CREDIT",
@@ -296,10 +312,13 @@ def _inject_defects(
                 sorted([truth[first.line_id], truth[second.line_id]])
             )
             del truth[second.line_id]
-            bank[i] = clubbed
             bank.pop(i + 1)
-            notes.append("clubbed_credit x1")
-            break
+            clubbed += 1
+            i += 1  # skip past the merged line
+            continue
+        i += 1
+    if clubbed:
+        notes.append(f"clubbed_credit x{clubbed}")
 
     return bank, notes
 
