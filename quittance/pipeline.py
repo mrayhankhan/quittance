@@ -21,6 +21,8 @@ class Report:
     matches: list[Match] = field(default_factory=list)
     exceptions: list[Exception_] = field(default_factory=list)
     rejected: list[Match] = field(default_factory=list)
+    pending_review: list[Match] = field(default_factory=list)
+    """Model proposals that reconcile but await human sign-off."""
     itc: list[tax.ItcLine] = field(default_factory=list)
     orders: orders.OrderRecon | None = None
     engine: str = ""
@@ -110,7 +112,11 @@ def run(ds: Dataset, force_offline: bool = False, skip_solver: bool = False) -> 
 
     # -- Layer 3 (the gate) --------------------------------------------------
     accepted, rejected, verif_exceptions = verify.verify(ds, proposals, claimed)
-    report.matches.extend(accepted)
+    # Anything the model proposed is advisory. It reconciles, but it does not
+    # post until a person signs it off, so it is reported separately and never
+    # counted in the auto-match rate.
+    report.matches.extend(m for m in accepted if not m.requires_review)
+    report.pending_review.extend(m for m in accepted if m.requires_review)
     report.rejected.extend(rejected)
     report.exceptions.extend(verif_exceptions)
     matched_lines = {m.bank_line_id for m in report.matches}

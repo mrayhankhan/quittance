@@ -180,6 +180,13 @@ class Match:
     confidence: float
     evidence: tuple[str, ...] = ()
     verified: bool = False
+    requires_review: bool = False
+    """True when a human must sign this off before it posts.
+
+    Set for every proposal originating at Layer 2. A match derived from reading
+    attacker-controllable text has no evidence independent of that text, so it
+    is advisory by construction -- however cleanly the arithmetic closes.
+    """
 
 
 @dataclass(frozen=True, slots=True)

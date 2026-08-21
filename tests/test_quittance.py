@@ -356,3 +356,63 @@ def test_order_exceptions_reach_the_queue():
     report = run(generate(seed=20260905, n_payments=2000, days=90), force_offline=True)
     refs = {e.ref for e in report.exceptions}
     assert all(e.ref in refs for e in report.orders.exceptions)
+
+
+# --------------------------------------------------------- adversarial ----
+
+
+def test_compromised_model_cannot_reach_the_ledger():
+    """The security invariant, under the strongest adversary.
+
+    Assumes the model is totally owned: every call returns the attacker's
+    settlement at confidence 1.0 with fabricated evidence. No injection payload
+    may result in a posted match.
+    """
+    from quittance.adversarial import engineered_collision, run_attacks
+
+    results = [*run_attacks(), engineered_collision()]
+    assert all(a.model_hijacked for a in results), "adversary should own the model"
+    corrupted = [a.payload for a in results if a.system_hijacked]
+    assert not corrupted, f"reached the ledger: {corrupted}"
+
+
+def test_layer2_never_posts_even_when_arithmetic_closes():
+    """Regression for the engineered-collision hole.
+
+    An attacker who steers order amounts can make a wrong settlement's net equal
+    the target credit exactly. The sum then closes and the old verifier accepted
+    it. Layer 2 output must be advisory regardless.
+    """
+    from quittance.adversarial import engineered_collision
+
+    a = engineered_collision()
+    assert not a.system_hijacked
+    assert "sign-off" in a.rejected_because or "review" in a.rejected_because
+
+
+def test_deterministic_layers_still_post_normally():
+    """Advisory-only must apply to Layer 2 alone, not to the whole pipeline."""
+    report = run(generate(seed=20260905, n_payments=2000, days=90), force_offline=True)
+    assert report.matches, "deterministic layers stopped posting"
+    assert all(not m.requires_review for m in report.matches)
+    assert all(m.layer is not Layer.LLM for m in report.matches)
+
+
+def test_pending_review_is_excluded_from_match_rate():
+    """A proposal awaiting sign-off is not a reconciled credit."""
+    from dataclasses import replace as dc_r
+
+    from quittance.schema import Match
+    from quittance.verify import verify as verify_fn
+
+    ds = generate(seed=3, n_payments=300)
+    nets = settlement_nets(ds.recon_rows)
+    line = next(b for b in ds.bank_lines if b.line_id in ds.truth)
+    sid = ds.truth[line.line_id].split("+")[0]
+    ds2 = dc_r(ds, bank_lines=tuple(
+        dc_r(b, amount=nets[sid]) if b.line_id == line.line_id else b for b in ds.bank_lines))
+
+    m = Match(line.line_id, sid, nets[sid], Layer.LLM, "test", 0.99)
+    accepted, _, _ = verify_fn(ds2, [m], set())
+    assert accepted, "should reconcile"
+    assert all(a.requires_review for a in accepted), "must be advisory"

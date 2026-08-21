@@ -1,4 +1,4 @@
-.PHONY: install demo report bench test lint clean
+.PHONY: install demo report bench attack test lint clean
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -18,6 +18,9 @@ demo-llm:
 
 bench:
 	$(PY) -m quittance.bench --payments 2000 --days 90
+
+attack:
+	$(PY) -m quittance.adversarial
 
 test:
 	$(PY) -m pytest tests/ -q

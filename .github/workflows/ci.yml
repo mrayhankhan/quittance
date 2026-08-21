@@ -32,6 +32,10 @@ jobs:
       - name: Demo runs, and finds zero false matches
         run: python -m quittance --offline --payments 2000 --days 90
 
+      # The security claim gets executed on every push, not just asserted.
+      - name: Adversarial — no injection reaches the ledger
+        run: python -m quittance.adversarial
+
       - name: Report renders
         run: |
           python -m quittance --offline --report out/report.html

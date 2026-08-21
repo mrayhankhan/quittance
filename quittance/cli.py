@@ -48,6 +48,11 @@ def render(report: Report) -> None:
     print(f"  unexplained            {inr(report.unexplained_amount):>18}")
     print(f"  ITC at risk            {inr(report.itc_at_risk):>18}")
 
+    if report.pending_review:
+        _head("Awaiting human sign-off")
+        print(f"  model proposals that reconciled  {len(report.pending_review):>5}")
+        print("  Layer 2 reads attacker-controllable text, so it proposes only.")
+
     _head("Correctness")
     fm = len(report.false_matches)
     verdict = "PASS" if fm == 0 else "FAIL"

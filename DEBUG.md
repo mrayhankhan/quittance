@@ -1,15 +1,19 @@
 # Engineering log
 
-Eight incidents from building Quittance, in the order they happened. Each one
-is backed by a commit in this repository.
+Nine incidents from building Quittance, in the order they happened. Each one is
+backed by a commit in this repository.
 
 They are here because the interesting question about a reconciliation tool is
 not whether it works on the happy path — it is what it does when it is wrong,
-and whether you can tell. Four of these eight were cases where **everything
-looked fine and wasn't**: green tests over an unexecuted code path, a benchmark
-measuring a network error, synthetic data quietly flattering its own matcher.
-Those are the failures that matter here, because a reconciliation engine that
-is confidently wrong is worse than one that is obviously broken.
+and whether you can tell. **Seven of these nine produced no error, no stack
+trace and no failing test**: green tests over a code path that never executed,
+a benchmark measuring a network error, synthetic data quietly flattering its own
+matcher, a documented feature that was never wired up, a safety property the
+README claimed and the code did not enforce.
+
+Those are the failures that matter here. A reconciliation engine that is
+confidently wrong is worse than one that is obviously broken, and the same is
+true of the tests and benchmarks that are supposed to catch it.
 
 ---
 
@@ -272,3 +276,80 @@ model's confident wrong answer looks exactly like its confident right one, and
 the only way to tell them apart is to recompute the arithmetic independently.
 Every incident above is a smaller version of the same problem: something that
 looked right, and the check that caught it.
+
+---
+
+## 9. My slogan was stronger than my code
+
+**Symptom.** None from the tests. This came from asking a question the test
+suite could not: *the model reads bank narration — who writes bank narration?*
+
+In production, nobody trustworthy. Narration is assembled from payer-controlled
+fields, and Razorpay's `description` and `notes` are free text the merchant
+types. That text was going straight into a prompt that influences where money
+gets posted.
+
+**Building the eval.** Six injection payloads — direct override, fake system
+turn, authority claim, pre-filled JSON, urgency, tool confusion — planted in the
+narration, against a `CompromisedClient` that simulates not a weak model but a
+*totally owned* one: every call returns the attacker's settlement at confidence
+1.0 with fabricated evidence. If the architecture survives that, it survives any
+real model, and it needs no API key to prove it.
+
+All six bounced:
+
+```
+  model hijacked      6/6   (by construction)
+  ledger corrupted    0/6   [PASS]
+```
+
+**Why I didn't believe it.** That is exactly the result I wanted, which made it
+the result to distrust — the same trap as incident 8. The six payloads all fail
+for one reason: the attacker names a *wrong* settlement, a wrong settlement has
+a different net, so the arithmetic cannot close. Fine. But that defence rests
+entirely on the attacker being unable to control the sum.
+
+A merchant controls order amounts.
+
+**The attack that worked.** Engineer a wrong settlement whose net exactly equals
+the target bank credit — bump one row by the difference — then inject a
+narration pointing the model at it:
+
+```
+engineered net == bank amount: True
+ATTACK SUCCEEDED (ledger corrupted): True
+  -> posted setl_9050001 instead of setl_9050000
+```
+
+**First fix, and why it was wrong.** I added a temporal plausibility check:
+reject a model-proposed settlement dated more than four days from the credit.
+Reran. The attack still succeeded — the attacker simply picks a colliding
+settlement *inside* the window. I had added a control that felt like security
+and wasn't, which is worse than none, because it invites you to stop looking.
+
+**The actual fix.** The premise was wrong, not the threshold. A match derived
+from reading attacker-controllable text has no evidence independent of that
+text. No amount of checking the sum helps when the sum is what the attacker
+forged. So Layer 2 lost the right to post: its proposals are marked
+`requires_review`, held in a separate queue, and excluded from the auto-match
+rate. It reconciles; a human signs it off.
+
+Which is what this project's own tagline — *the model may propose; it may never
+close the books* — had been claiming all along. The README said it. The code
+did not do it. Layer 2 could close the books any time the arithmetic agreed.
+
+The temporal check stayed, demoted honestly to defence-in-depth with a comment
+saying it is not what stops injection.
+
+**Structural change.** `make attack` runs on every push in CI, and
+`test_compromised_model_cannot_reach_the_ledger` fails the build if any payload
+posts. `test_layer2_never_posts_even_when_arithmetic_closes` pins the collision
+case specifically.
+
+**Lesson.** Two, and the second one is the one I'd keep. First: an eval that
+only confirms your thesis has not been finished — the interesting payload is the
+one that attacks the *reason* the others failed. Second: when documentation and
+implementation disagree about a safety property, the documentation is usually
+the more correct of the two. I had written the right invariant in the README
+months before the code enforced it, and never noticed the gap until an attacker
+model went looking for it.
