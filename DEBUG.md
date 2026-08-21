@@ -194,3 +194,55 @@ that the stage runs, not merely that it returns sensible values when called.
 that is documented, plausible, and never invoked. I had been verifying outputs;
 I had not verified that every input source was read. For anything that claims to
 reconcile N sources, assert N.
+
+---
+
+## 8. A benchmark that was measuring a 403
+
+**Symptom.** First run of the ablation with a real API key:
+
+```
+no solver · model   api.groq.com:openai/gpt-o   110/172  64.0%   via L2 0   rejected 0
+```
+
+Zero matches via Layer 2 and zero rejections. I nearly wrote this up as "the
+model contributed nothing" — it agreed with my thesis, which is exactly why it
+should have been suspicious.
+
+**What tipped me off.** Zero *rejections* was the tell. If the model had
+answered badly, the verifier would have thrown proposals out and the rejected
+count would be non-zero. Zero of both means nothing reached the verifier at
+all — the model was never really asked.
+
+**Root cause.** Two bugs stacked.
+
+First: `urllib` sends `User-Agent: Python-urllib/3.13` by default, and
+Cloudflare answers that with `403 error 1010`. Every request was being blocked
+before it reached Groq.
+
+Second, and much worse: my exception handler caught `URLError` and returned
+`[]` — the same value as "the model considered this line and had no candidate."
+A transport failure and a negative result were indistinguishable. **The
+benchmark was reporting a network error as a scientific finding.**
+
+**Fix.** An explicit `User-Agent`, and error counters (`calls`, `errors`,
+`rate_limited`, `last_error`) surfaced on the `Report` so a failed call can
+never masquerade as an empty one.
+
+Rerunning immediately exposed a third problem the counters made visible:
+`calls: 3, errors: 59, last: HTTP 429`. Free tiers meter per minute. Added
+2.1s pacing and exponential backoff honouring `retry-after`.
+
+Final clean run: **62 calls, 0 errors, 48 matches via Layer 2** — and the
+honest conclusion flipped. The model is substantially better than the heuristic
+at reading mangled narration (48 vs 30). It is still worse than arithmetic.
+
+**Structural change.** Any client that can fail over a network now counts its
+failures, and the count is printed next to the result. A benchmark that cannot
+distinguish "no answer" from "no connection" is not a benchmark.
+
+**Lesson.** The dangerous measurement is the one that confirms what you already
+believe. I had a thesis — *the model is the wrong tool here* — and the first
+run agreed with it for entirely the wrong reason. If I had shipped that number,
+I would have argued the right conclusion from fabricated evidence, and the
+first judge to set an API key would have got a different answer than my README.

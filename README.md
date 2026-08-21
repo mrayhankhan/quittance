@@ -75,6 +75,37 @@ because they were hallucinations — most named the right settlement — but
 because the arithmetic didn't close to the paisa. See
 [the reserve-hold case](#why-layer-3-exists).
 
+### Does the model actually earn its place?
+
+Layer 2 contributing 0% is easy to dismiss — either as proof the model is
+useless, or as proof it was never given a fair chance. `make bench` settles it
+by removing Layer 1 so arithmetic cannot rescue anything, and measuring what is
+left:
+
+| arm | engine | matched | via L2 | rejected by L3 | false | time |
+|---|---|---|---|---|---|---|
+| full pipeline | — | **166/172 · 96.5%** | 0 | 5 | 0 | 0.05s |
+| no solver | heuristic | 140/172 · 81.4% | 30 | 6 | 0 | 0.05s |
+| no solver | gpt-oss-120b | 158/172 · 91.9% | 48 | 10 | 0 | ~3 min |
+
+Three things fall out of this, and none of them were assumptions:
+
+**The model is genuinely good at the job it was given.** With arithmetic
+removed it read 48 mangled narrations against the heuristic's 30 — 60% more.
+Bank feeds that concatenate the beneficiary name into the UTR, or space every
+character, or keep only the last six digits, are a real reading problem and a
+real model solves it.
+
+**Arithmetic is still better.** Layer 1 recovers 166 against the model's 158,
+in 0.05 seconds against roughly three minutes, for zero tokens and zero
+API keys. Faster, cheaper, more accurate, and it cannot hallucinate.
+
+**The verifier earns its keep either way.** It rejected 10 of the model's
+proposals. Zero false matches survived in any arm.
+
+So the model ships **disabled by default**. Not because it doesn't work —
+because it was measured against the alternative and lost.
+
 ### The exception queue
 
 ```bash
