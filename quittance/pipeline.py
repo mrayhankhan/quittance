@@ -24,6 +24,9 @@ class Report:
     itc: list[tax.ItcLine] = field(default_factory=list)
     orders: orders.OrderRecon | None = None
     engine: str = ""
+    engine_calls: int = 0
+    engine_errors: int = 0
+    engine_last_error: str | None = None
     elapsed_ms: float = 0.0
     false_matches: list[tuple[str, str, str]] = field(default_factory=list)
     """``(bank_line_id, claimed_settlements, true_settlements)``."""
@@ -58,8 +61,13 @@ class Report:
         return sum(line.at_risk for line in self.itc)
 
 
-def run(ds: Dataset, force_offline: bool = False) -> Report:
-    """Execute all four layers plus the tax reconciliation."""
+def run(ds: Dataset, force_offline: bool = False, skip_solver: bool = False) -> Report:
+    """Execute all four layers plus the tax and order reconciliations.
+
+    ``skip_solver`` disables Layer 1. It exists for the ablation in
+    :mod:`quittance.bench`: with arithmetic removed, whatever Layer 2 recovers
+    is attributable to the model alone.
+    """
     started = time.perf_counter()
     report = Report(dataset_seed=ds.seed, bank_lines=len(ds.bank_lines))
 
@@ -69,7 +77,10 @@ def run(ds: Dataset, force_offline: bool = False) -> Report:
     claimed = {sid for m in l0 for sid in m.settlement_id.split("+")}
 
     # -- Layer 1 ------------------------------------------------------------
-    l1, unresolved = matching.layer1_solver(ds, unresolved, claimed)
+    if skip_solver:
+        l1 = []
+    else:
+        l1, unresolved = matching.layer1_solver(ds, unresolved, claimed)
     report.matches.extend(l1)
     claimed |= {sid for m in l1 for sid in m.settlement_id.split("+")}
 
@@ -93,6 +104,9 @@ def run(ds: Dataset, force_offline: bool = False) -> Report:
         if sid not in claimed
     ]
     proposals = llm.layer2_propose(client, unresolved, candidates)
+    report.engine_errors = getattr(client, "errors", 0)
+    report.engine_last_error = getattr(client, "last_error", None)
+    report.engine_calls = getattr(client, "calls", 0)
 
     # -- Layer 3 (the gate) --------------------------------------------------
     accepted, rejected, verif_exceptions = verify.verify(ds, proposals, claimed)

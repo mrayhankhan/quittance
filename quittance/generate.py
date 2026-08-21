@@ -286,6 +286,18 @@ def _inject_defects(
         bank[i] = replace(line, narration=line.narration[:35], utr=None)
     notes.append(f"narration_truncated x{max(1, len(bank) // 6)}")
 
+    # Mangled narration. Indian bank statement feeds are not a clean format --
+    # they concatenate fields, drop separators, transpose digits and abbreviate
+    # the beneficiary. The UTR is usually still *in* there, but not as a clean
+    # prefix, so naive string matching cannot recover it. This is the only
+    # defect class in the generator that a language model is genuinely better
+    # at than a regex, and it exists to test exactly that claim.
+    n_mangled = max(1, len(bank) // 8)
+    for line in rng.sample([b for b in bank if b.utr], n_mangled):
+        i = bank.index(line)
+        bank[i] = replace(line, narration=_mangle(rng, line.utr), utr=None)
+    notes.append(f"narration_mangled x{n_mangled}")
+
     # Settlements sharing a UTR, because a bank feed copied one narration onto
     # another line. Exact matching must refuse to pick between them.
     n_dupes = max(1, len(bank) // 40)
@@ -329,6 +341,27 @@ def _inject_defects(
         notes.append(f"clubbed_credit x{clubbed}")
 
     return bank, notes
+
+
+#: How real bank feeds present a settlement credit. The UTR survives in each
+#: one, but never as something ``str.startswith`` will find.
+_MANGLERS = (
+    # dashes inserted every four characters
+    lambda u: f"NEFT CR-HDFC0000060-RAZORPAY SOFTWARE PVT-"
+              f"{'-'.join(u[i:i + 4] for i in range(0, len(u), 4))}",
+    # beneficiary name run together, UTR buried mid-string
+    lambda u: f"RTGS RAZORPAYSOFTWAREPVTLTD{u}SETTLE",
+    # only the tail of the UTR survives
+    lambda u: f"IMPS/RZRPY/...{u[-6:]}/STLMNT",
+    # spaced out by the statement renderer
+    lambda u: f"NEFT-CITIN-RAZORPAY SOFTWARE PRIVA-{' '.join(u)}",
+    # uppercased and abbreviated
+    lambda u: f"MB/RZP/{u.upper()}/SETLMNT/CR",
+)
+
+
+def _mangle(rng: random.Random, utr: str) -> str:
+    return rng.choice(_MANGLERS)(utr)
 
 
 def _damage_orders(

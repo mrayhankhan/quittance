@@ -9,6 +9,8 @@ language model can propose a match but never close the books.
 
 **Razorpay AI Buildathon 2026 · Track 4 — AI Finance Controller**
 
+![ci](https://github.com/mrayhankhan/quittance/actions/workflows/ci.yml/badge.svg)
+
 ```bash
 make install
 make demo        # runs offline, no API key needed
@@ -88,6 +90,41 @@ An exception that says "unexplained" and nothing else has moved the work, not
 done it.
 
 ## Architecture
+
+```mermaid
+flowchart TD
+    B[Bank statement<br/>NEFT credits]
+    S[Razorpay settlement<br/>recon report]
+    O[Merchant order<br/>ledger]
+    G[GSTR-2B]
+
+    B --> L0
+    S --> L0
+
+    L0{"<b>Layer 0</b> — exact<br/>UTR join<br/><i>no AI</i>"}
+    L0 -->|matched| DONE[Reconciled<br/>+ audit trail]
+    L0 -->|"ambiguous UTR<br/>or amount disagrees"| L1
+
+    L1{"<b>Layer 1</b> — solver<br/>amount+date, subset-sum<br/><i>no AI</i>"}
+    L1 -->|matched| DONE
+    L1 -->|"unreadable<br/>narration"| L2
+
+    L2["<b>Layer 2</b> — model<br/>reads narration, cites evidence<br/><b>never does arithmetic</b>"]
+    L2 -->|proposal| L3
+
+    L3{"<b>Layer 3</b> — verifier<br/>recompute to the paisa<br/><i>no AI</i>"}
+    L3 -->|closes| DONE
+    L3 -->|"does not close"| EX[Exception queue<br/>gap · cause · next action]
+
+    S --> ORD["<b>Order leg</b><br/>missing · partial capture<br/>double settlement"]
+    O --> ORD
+    ORD --> EX
+
+    S --> TAX["<b>Tax leg</b><br/>fees → invoice → 2B"]
+    G --> TAX
+    TAX -->|"not in 2B"| EX
+    TAX -->|claimable| DONE
+```
 
 | Layer          | Does                                                                                       | AI? |
 | -------------- | ------------------------------------------------------------------------------------------ | --- |

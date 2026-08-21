@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check quittance tests
+
+      - name: Test
+        run: pytest tests/ -q
+
+      # The headline claim is that a judge can clone this and reproduce the
+      # published numbers. That claim gets tested, not asserted.
+      - name: Demo runs, and finds zero false matches
+        run: python -m quittance --offline --payments 2000 --days 90
+
+      - name: Report renders
+        run: |
+          python -m quittance --offline --report out/report.html
+          test -s out/report.html
