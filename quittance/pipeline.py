@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from . import llm, matching, tax, verify
+from . import llm, matching, orders, tax, verify
 from .schema import Dataset, Exception_, ExceptionCode, Layer, Match
 
 
@@ -22,6 +22,7 @@ class Report:
     exceptions: list[Exception_] = field(default_factory=list)
     rejected: list[Match] = field(default_factory=list)
     itc: list[tax.ItcLine] = field(default_factory=list)
+    orders: orders.OrderRecon | None = None
     engine: str = ""
     elapsed_ms: float = 0.0
     false_matches: list[tuple[str, str, str]] = field(default_factory=list)
@@ -113,6 +114,10 @@ def run(ds: Dataset, force_offline: bool = False) -> Report:
                     amount=line.amount,
                 )
             )
+
+    # -- order leg: settlement rows down to the merchant ledger ---------------
+    report.orders = orders.reconcile_orders(ds)
+    report.exceptions.extend(report.orders.exceptions)
 
     # -- tax layer -----------------------------------------------------------
     report.itc = tax.reconcile_itc(ds)

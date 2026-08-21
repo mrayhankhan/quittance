@@ -143,6 +143,7 @@ class ExceptionCode(StrEnum):
     """
 
     MISSING_ORDER = "missing_order"
+    DUPLICATE_PAYMENT = "duplicate_payment"
     AMOUNT_MISMATCH = "amount_mismatch"
     UNSETTLED = "unsettled"
     DUPLICATE_UTR = "duplicate_utr"

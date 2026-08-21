@@ -150,3 +150,47 @@ stay at zero. The generator can no longer quietly flatter the matcher.
 that it existed *at the right rate*. For synthetic data, the distribution is
 part of the contract, not a detail of the fixture — and a benchmark you author
 yourself will drift toward flattering you unless something asserts otherwise.
+
+---
+
+## 7. The headline claim was not true
+
+**Symptom.** None. Everything passed. I only found this because I went looking
+for weaknesses before recording the video, and grepped for where the order
+ledger was consumed:
+
+```
+$ grep -c "ds.orders" quittance/matching.py quittance/pipeline.py quittance/verify.py
+0
+0
+0
+```
+
+**What was wrong.** The README's first line called this a *three-way*
+reconciliation — bank statement, settlement report, and merchant order ledger.
+The generator dutifully built an order ledger and attached `order_id` to every
+row. Nothing ever read it. The pipeline did bank-to-settlement plus tax: a
+two-way match with a good story.
+
+**Why it survived so long.** Forty tests passed, because every one of them
+tested what the code *did* rather than what the README *claimed*. There was no
+test asserting the third source was consumed at all, so an entirely absent
+feature looked exactly like a working one. The dataclass existed, the field was
+populated, the docs described it — every signal except execution said it was
+there.
+
+**Fix.** Built `orders.py`: explodes each settlement to order level and asks
+three questions per payment row — does an order exist, does its value agree to
+the paisa, and has any order settled twice. It found 18 real defects in the
+existing dataset that had been invisible: 8 settlement rows pointing at orders
+absent from the ledger, and 10 partial captures where the order value and the
+captured amount disagreed.
+
+**Structural change.** `test_order_leg_actually_runs` asserts the leg executed
+at all. Claims in the README that correspond to pipeline stages now have a test
+that the stage runs, not merely that it returns sensible values when called.
+
+**Lesson.** The dangerous defect is not the failing test, it is the capability
+that is documented, plausible, and never invoked. I had been verifying outputs;
+I had not verified that every input source was read. For anything that claims to
+reconcile N sources, assert N.

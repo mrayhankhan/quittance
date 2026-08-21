@@ -36,6 +36,13 @@ def render(report: Report) -> None:
         print(f"  {label}  {n:>4}  {pct:5.1f}%  {blocks}")
     print(f"  {'':<32}  {len(report.matches):>4}  {report.match_rate * 100:5.1f}%  total")
 
+    if report.orders:
+        o = report.orders
+        _head("Order ledger (third leg)")
+        print(f"  settlement rows tied to an order   {o.tied:>5} / {o.payment_rows}"
+              f"   {o.coverage * 100:5.2f}%")
+        print(f"  order-side exceptions              {len(o.exceptions):>5}")
+
     _head("Money")
     print(f"  matched                {inr(report.matched_amount):>18}")
     print(f"  unexplained            {inr(report.unexplained_amount):>18}")

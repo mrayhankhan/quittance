@@ -50,10 +50,14 @@ Match rate by layer
   L2  model, verified by L3    AI     0    0.0%
                                     166   96.5%  total
 
+Order ledger (third leg)
+  settlement rows tied to an order    1982 / 2000   99.10%
+  order-side exceptions                 18
+
 Correctness
   false matches                          0   [PASS]
   proposals rejected by verifier         5
-  exceptions raised                      7
+  exceptions raised                     25
 ```
 
 Every number above is reproducible: the generator ships with its seed. Clone
@@ -76,7 +80,7 @@ make report
 ```
 
 Writes a self-contained HTML file — no server, no dependencies, opens from
-disk — with the seven unresolved rows, each carrying its rupee gap, the layer
+disk — with the 25 unresolved rows, each carrying its rupee gap, the layer
 that raised it, and what a reviewer should actually do about it. Keyboard
 triage (`j`/`k`/`r`), filter by type, export decisions as JSON.
 
@@ -91,6 +95,7 @@ done it.
 | **1** Solver   | Amount+date uniqueness, then subset-sum for credits the bank clubbed together              | no  |
 | **2** Model    | Reads mangled narration, nominates a settlement, cites evidence. **Never does arithmetic** | yes |
 | **3** Verifier | Recomputes every proposal to the paisa. Rejects anything that does not close               | no  |
+| **Orders**     | Explodes each settlement to order level: missing orders, partial captures, double settlements | no  |
 | **Tax**        | Booked fees → Razorpay tax invoice → GSTR-2B → claimable / at-risk verdict                 | no  |
 
 ### Why the model is confined to Layer 2
@@ -142,7 +147,7 @@ an audit six months later. A long, honest exception list is the correct output.
 ## Tests
 
 ```
-40 passed
+44 passed
 ```
 
 The load-bearing one runs the full pipeline across five seeds and asserts the
@@ -170,8 +175,9 @@ No merchant is going to hand a student their settlement file, so the generator
 builds one — and deliberately breaks it in the ways real files break:
 
 `late_refund` · `chargeback_reversal` · `reserve_hold` · `narration_truncated`
-· `duplicate_utr` · `clubbed_credit` · `itc_not_in_2b` · `itc_amount_mismatch`
-· GST rounding drift between per-row and monthly-aggregate rounding
+· `duplicate_utr` · `clubbed_credit` · `order_missing` · `order_amount_mismatch`
+· `itc_not_in_2b` · `itc_amount_mismatch` · GST rounding drift between per-row
+and monthly-aggregate rounding
 
 Row shape follows Razorpay's `GET /v1/settlements/recon/combined` — `entity_id`,
 `type`, `debit`, `credit`, `fee`, `tax`, `settlement_id`, `settlement_utr`,
@@ -202,6 +208,7 @@ quittance/
   tax.py        ITC reconciliation against GSTR-2B
   pipeline.py   orchestration and metrics
   cli.py        terminal report
+  orders.py     the third leg — settlement rows down to the merchant ledger
   report.py     the exception queue, as a self-contained HTML file
 ```
 

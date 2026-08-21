@@ -247,6 +247,14 @@ def generate(
     bank, extra = _inject_defects(rng, bank, truth)
     injected.extend(extra)
 
+    # ---- order-ledger defects --------------------------------------------
+    # The merchant's own ledger is not clean either. Orders go missing when a
+    # sale is created outside the shop system, and captured amounts drift from
+    # order values on partial captures. Both are real, both are found only by
+    # exploding the settlement down to order level.
+    orders, order_notes = _damage_orders(rng, orders)
+    injected.extend(order_notes)
+
     # ---- tax invoices and GSTR-2B ----------------------------------------
     invoices, gstr2b, tax_defects = _build_tax(rng, rows)
     injected.extend(tax_defects)
@@ -321,6 +329,30 @@ def _inject_defects(
         notes.append(f"clubbed_credit x{clubbed}")
 
     return bank, notes
+
+
+def _damage_orders(
+    rng: random.Random, orders: list[OrderRow]
+) -> tuple[list[OrderRow], list[str]]:
+    """Introduce the two order-side defects that actually occur."""
+    notes: list[str] = []
+    if len(orders) < 20:
+        return orders, notes
+
+    # Partial capture: the order says one thing, the captured payment another.
+    n_mismatch = max(1, len(orders) // 200)
+    for o in rng.sample(orders, n_mismatch):
+        i = orders.index(o)
+        orders[i] = replace(o, amount=o.amount - rupees(f"{rng.randrange(10, 400)}.00"))
+    notes.append(f"order_amount_mismatch x{n_mismatch}")
+
+    # Order absent from the merchant ledger entirely.
+    n_missing = max(1, len(orders) // 250)
+    for o in rng.sample(orders, n_missing):
+        orders.remove(o)
+    notes.append(f"order_missing x{n_missing}")
+
+    return orders, notes
 
 
 def _build_tax(

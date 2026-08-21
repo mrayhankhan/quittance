@@ -48,7 +48,11 @@ NEXT_ACTION = {
         "Settlement row has no matching order. Check whether the order was created "
         "outside the merchant system.",
     ExceptionCode.AMOUNT_MISMATCH:
-        "Order value and captured payment disagree. Look for a partial capture.",
+        "Order value and captured payment disagree. Look for a partial capture, or a "
+        "discount applied after the order was written.",
+    ExceptionCode.DUPLICATE_PAYMENT:
+        "The same order settled twice. Confirm whether the customer was double-charged "
+        "and refund immediately if so — this one is urgent.",
     ExceptionCode.LATE_REFUND:
         "Refund deducted in a later cycle than it was initiated. Match to the "
         "originating payment, not the settlement date.",
@@ -63,6 +67,7 @@ NEXT_ACTION = {
 
 SEVERITY = {
     ExceptionCode.UNEXPLAINED: "critical",
+    ExceptionCode.DUPLICATE_PAYMENT: "critical",
     ExceptionCode.DUPLICATE_UTR: "critical",
     ExceptionCode.ITC_NOT_IN_2B: "warning",
     ExceptionCode.ITC_AMOUNT_MISMATCH: "warning",
@@ -107,6 +112,10 @@ def render_html(report: Report) -> str:
   {_tile("Unexplained", inr(report.unexplained_amount),
          f"{len(report.exceptions)} exceptions", "warning")}
   {_tile("ITC at risk", inr(report.itc_at_risk), "input tax credit", "warning")}
+  {_tile("Order coverage",
+         f"{report.orders.coverage * 100:.2f}%" if report.orders else "—",
+         f"{report.orders.tied} of {report.orders.payment_rows} rows tied"
+         if report.orders else "not run", "ok")}
 </section>
 
 <section>

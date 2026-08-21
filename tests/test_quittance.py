@@ -305,3 +305,54 @@ def test_difficulty_does_not_decay_with_volume(payments, days):
     assert report.false_matches == []
     assert report.match_rate <= 0.99, "data got too easy at scale"
     assert report.exceptions, "no exceptions raised at any volume"
+
+
+# ------------------------------------------------------- order ledger leg ----
+
+
+def test_order_leg_actually_runs():
+    """Regression: the order ledger was generated but never reconciled.
+
+    The README claimed a three-way match while the pipeline did two-way plus
+    tax. `ds.orders` appeared zero times outside the generator. This pins the
+    third leg so the headline claim stays true.
+    """
+    report = run(generate(seed=20260905, n_payments=2000, days=90), force_offline=True)
+    assert report.orders is not None, "order leg did not run"
+    assert report.orders.payment_rows > 0
+    assert report.orders.tied > 0
+
+
+def test_order_leg_finds_injected_defects():
+    from quittance.schema import ExceptionCode
+
+    ds = generate(seed=20260905, n_payments=2000, days=90)
+    report = run(ds, force_offline=True)
+    codes = {e.code for e in report.orders.exceptions}
+    assert ExceptionCode.MISSING_ORDER in codes
+    assert ExceptionCode.AMOUNT_MISMATCH in codes
+    # coverage should be high but never perfect -- defects were injected
+    assert 0.95 < report.orders.coverage < 1.0
+
+
+def test_order_leg_catches_double_settlement():
+    """The same order settling twice is the most expensive error here."""
+    from dataclasses import replace as dc_r
+
+    from quittance.orders import reconcile_orders
+    from quittance.schema import ExceptionCode
+
+    ds = generate(seed=9, n_payments=200)
+    first = next(r for r in ds.recon_rows if r.type.value == "payment")
+    clone = dc_r(first, entity_id=first.entity_id + "_dup")
+    ds = dc_replace(ds, recon_rows=ds.recon_rows + (clone,))
+
+    codes = [e.code for e in reconcile_orders(ds).exceptions]
+    assert ExceptionCode.DUPLICATE_PAYMENT in codes
+
+
+def test_order_exceptions_reach_the_queue():
+    """Order-side findings must surface to the analyst, not just the struct."""
+    report = run(generate(seed=20260905, n_payments=2000, days=90), force_offline=True)
+    refs = {e.ref for e in report.exceptions}
+    assert all(e.ref in refs for e in report.orders.exceptions)
