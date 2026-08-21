@@ -259,9 +259,11 @@ confident wrong one — which is the number this whole project is built around.
 
 `make demo` runs `HeuristicClient`, a deterministic offline stand-in, so a
 clean clone reproduces the published numbers with no network and no spend. Set
-`ANTHROPIC_API_KEY` and run `make demo-llm` for the real client. The report
-prints which engine ran, because a benchmark that silently swaps engines is not
-a benchmark.
+any one of `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` or
+`TOGETHER_API_KEY` and run `make demo-llm` (or `make bench` for the ablation).
+The report always prints which engine ran and how many calls failed — a
+benchmark that silently swaps engines, or silently eats a 403, is not a
+benchmark. See [DEBUG.md](DEBUG.md) incident 8.
 
 ## Layout
 

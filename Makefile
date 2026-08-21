@@ -14,7 +14,7 @@ report:
 	$(PY) -m quittance --offline --payments 2000 --days 90 --report --open
 
 demo-llm:
-	$(PY) -m quittance
+	$(PY) -m quittance --payments 2000 --days 90
 
 bench:
 	$(PY) -m quittance.bench --payments 2000 --days 90
