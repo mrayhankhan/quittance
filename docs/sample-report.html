@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quittance — exception queue</title>
+<style>
+:root{--bg:#eef0ec;--card:#f8f9f6;--ink:#16211c;--soft:#56605a;--faint:#8a938c;
+--rule:#c9d0c7;--ok:#1f5d3f;--okbg:#dce9e0;--warn:#8a5f16;--warnbg:#efe5d0;
+--crit:#8c2f27;--critbg:#f0dfdc;
+--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+--serif:ui-serif,"Iowan Old Style",Palatino,Georgia,serif}
+@media(prefers-color-scheme:dark){:root{--bg:#10150f;--card:#171d16;--ink:#e2e8e0;
+--soft:#9ba69c;--faint:#6c7770;--rule:#2e382f;--ok:#63bc8c;--okbg:#172e20;
+--warn:#d3a24e;--warnbg:#302716;--crit:#e08c7f;--critbg:#33201c}}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--serif);margin:0;
+padding:0 24px 80px;-webkit-font-smoothing:antialiased}
+header{max-width:1080px;margin:0 auto;padding:40px 0 22px;border-bottom:2px solid var(--ink)}
+.brand{font:600 13px/1 var(--mono);letter-spacing:.22em}
+.sub{font:11px/1.5 var(--mono);color:var(--faint);margin-top:8px;letter-spacing:.04em}
+section{max-width:1080px;margin:0 auto;padding-top:46px}
+h2{font:500 12px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+color:var(--ok);margin:0 0 14px;padding-bottom:9px;border-bottom:1px solid var(--rule)}
+h2 .count{color:var(--faint);margin-left:6px}
+.note{font-size:14px;color:var(--soft);max-width:70ch;margin:0 0 16px}
+kbd{font:11px var(--mono);background:var(--card);border:1px solid var(--rule);
+border-radius:3px;padding:1px 5px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;
+max-width:1080px;margin:0 auto;padding-top:30px}
+.tile{background:var(--card);border:1px solid var(--rule);border-left-width:3px;padding:16px 18px}
+.tile.ok{border-left-color:var(--ok)}.tile.warning{border-left-color:var(--warn)}
+.tile.critical{border-left-color:var(--crit)}
+.tile .k{font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.tile .v{font:26px/1.2 var(--mono);font-variant-numeric:tabular-nums;margin:7px 0 3px}
+.tile .s{font-size:13px;color:var(--soft)}
+.layer{display:grid;grid-template-columns:230px 1fr 92px;gap:14px;align-items:center;
+padding:9px 0;border-bottom:1px solid var(--rule)}
+.ll{font:13px var(--mono)}.lv{font:13px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.tag{font:9px var(--mono);letter-spacing:.1em;padding:2px 6px;margin-left:8px;border-radius:2px}
+.tag.noai{background:var(--okbg);color:var(--ok)}.tag.ai{background:var(--warnbg);color:var(--warn)}
+.bar{height:7px;background:var(--rule);border-radius:1px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok)}
+.toolbar{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:12px}
+.spacer{flex:1}
+.chip{font:11px var(--mono);letter-spacing:.05em;background:var(--card);color:var(--soft);
+border:1px solid var(--rule);border-radius:3px;padding:5px 10px;cursor:pointer}
+.chip:hover{color:var(--ink)}
+.chip.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip .n{color:var(--faint);margin-left:3px}.chip.active .n{color:var(--bg);opacity:.65}
+.queue{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--card);border:1px solid var(--rule);border-left-width:3px;cursor:pointer}
+.row:focus{outline:2px solid var(--ok);outline-offset:2px}
+.row.critical{border-left-color:var(--crit)}.row.warning{border-left-color:var(--warn)}
+.row.info{border-left-color:var(--faint)}
+.head{display:grid;grid-template-columns:10px 150px 1fr 130px 78px;gap:12px;
+align-items:center;padding:13px 16px}
+.sev{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.row.critical .sev{background:var(--crit)}.row.warning .sev{background:var(--warn)}
+.ref{font:13px var(--mono)}
+.code{font:11px var(--mono);letter-spacing:.06em;color:var(--soft)}
+.amt{font:13px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.done{font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase;text-align:right;
+color:var(--ok);opacity:0}
+.row.reviewed .done{opacity:1}.row.reviewed{opacity:.5}
+.body{display:none;padding:0 16px 16px 38px;border-top:1px solid var(--rule);margin-top:2px}
+.row.open .body{display:block}
+.detail{font-size:14px;margin:13px 0 9px}
+.action{font-size:14px;color:var(--soft);margin:0 0 11px}
+.mark{font:11px var(--mono);color:var(--soft);cursor:pointer;user-select:none}
+.empty{color:var(--faint);font-style:italic}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+th{text-align:left;font:10px var(--mono);letter-spacing:.11em;text-transform:uppercase;
+color:var(--faint);padding:0 12px 7px 0;border-bottom:1px solid var(--ink)}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--rule)}
+td.m{font-family:var(--mono);font-size:13px}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.bad td{color:var(--crit)}
+footer{max-width:1080px;margin:64px auto 0;padding-top:18px;border-top:2px solid var(--ink);
+font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+@media(max-width:760px){.head{grid-template-columns:10px 1fr 90px;}
+.code,.done{display:none}.layer{grid-template-columns:1fr}}
+</style>
+</head><body>
+<header>
+  <div class="brand">QUITTANCE</div>
+  <div class="sub">settlement reconciliation · seed 20260905 ·
+    engine heuristic-offline · 4 ms ·
+    generated 21 Aug 2026 20:23 IST</div>
+</header>
+
+<section class="tiles">
+  <div class="tile ok"><div class="k">Match rate</div><div class="v">96.5%</div><div class="s">166 of 172 credits</div></div>
+  <div class="tile ok"><div class="k">False matches</div><div class="v">0</div><div class="s">answer-key verified</div></div>
+  <div class="tile warning"><div class="k">Unexplained</div><div class="v">₹4,12,327.99</div><div class="s">24 exceptions</div></div>
+  <div class="tile warning"><div class="k">ITC at risk</div><div class="v">₹0.00</div><div class="s">input tax credit</div></div>
+  <div class="tile ok"><div class="k">Order coverage</div><div class="v">99.10%</div><div class="s">1982 of 2000 rows tied</div></div>
+</section>
+
+<section>
+  <h2>Where the matching happened</h2>
+  <div class="layers"><div class="layer"><div class="ll">L0 · exact identifier<span class="tag noai">no AI</span></div><div class="bar"><i style="width:64.0%"></i></div><div class="lv">110 · 64.0%</div></div>
+<div class="layer"><div class="ll">L1 · constrained solver<span class="tag noai">no AI</span></div><div class="bar"><i style="width:32.6%"></i></div><div class="lv">56 · 32.6%</div></div>
+<div class="layer"><div class="ll">L2 · model, verified by L3<span class="tag ai">AI</span></div><div class="bar"><i style="width:0.0%"></i></div><div class="lv">0 · 0.0%</div></div></div>
+  <p class="note">Layers 0 and 1 are deterministic. The model proposes only what
+  they decline, and Layer 3 recomputes every proposal before it can become a match.</p>
+</section>
+
+<section>
+  <h2>Exception queue <span class="count">24</span></h2>
+  <div class="toolbar">
+    <button class="chip active" data-filter="all">all <span class="n">24</span></button>
+    <button class="chip" data-filter="amount_mismatch">amount_mismatch <span class="n">10</span></button>
+<button class="chip" data-filter="missing_order">missing_order <span class="n">8</span></button>
+<button class="chip" data-filter="unexplained">unexplained <span class="n">5</span></button>
+<button class="chip" data-filter="narration_truncated">narration_truncated <span class="n">1</span></button>
+    <span class="spacer"></span>
+    <button class="chip" id="hide-done">hide reviewed</button>
+    <button class="chip" id="export">export decisions</button>
+  </div>
+  <p class="note">Click a row to expand. <kbd>j</kbd>/<kbd>k</kbd> to move,
+  <kbd>r</kbd> to mark reviewed. Decisions persist in this browser and export as JSON.</p>
+  <div class="queue"><article class="row critical" data-code="unexplained" data-id="bank_0004" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">bank_0004</span>
+    <span class="code">unexplained</span>
+    <span class="amt">₹30,488.79</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">proposal rejected by verifier: arithmetic mismatch: settlements sum to 3908021, bank line is 3048879 · raised at L2_llm</p>
+    <p class="action"><strong>Next:</strong> Arithmetic does not close. Check for a rolling reserve hold, an unrecorded adjustment, or a settlement that spans the cycle boundary.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row critical" data-code="unexplained" data-id="bank_0054" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">bank_0054</span>
+    <span class="code">unexplained</span>
+    <span class="amt">₹65,013.77</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">proposal rejected by verifier: arithmetic mismatch: settlements sum to 6680348, bank line is 6501377 · raised at L2_llm</p>
+    <p class="action"><strong>Next:</strong> Arithmetic does not close. Check for a rolling reserve hold, an unrecorded adjustment, or a settlement that spans the cycle boundary.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row critical" data-code="unexplained" data-id="bank_0078" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">bank_0078</span>
+    <span class="code">unexplained</span>
+    <span class="amt">₹67,070.62</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">proposal rejected by verifier: arithmetic mismatch: settlements sum to 7322630, bank line is 6707062 · raised at L2_llm</p>
+    <p class="action"><strong>Next:</strong> Arithmetic does not close. Check for a rolling reserve hold, an unrecorded adjustment, or a settlement that spans the cycle boundary.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row critical" data-code="unexplained" data-id="bank_0133" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">bank_0133</span>
+    <span class="code">unexplained</span>
+    <span class="amt">₹46,380.64</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">proposal rejected by verifier: arithmetic mismatch: settlements sum to 4912924, bank line is 4638064 · raised at L2_llm</p>
+    <p class="action"><strong>Next:</strong> Arithmetic does not close. Check for a rolling reserve hold, an unrecorded adjustment, or a settlement that spans the cycle boundary.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row critical" data-code="unexplained" data-id="bank_0156" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">bank_0156</span>
+    <span class="code">unexplained</span>
+    <span class="amt">₹22,972.05</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">proposal rejected by verifier: arithmetic mismatch: settlements sum to 2584051, bank line is 2297205 · raised at L2_llm</p>
+    <p class="action"><strong>Next:</strong> Arithmetic does not close. Check for a rolling reserve hold, an unrecorded adjustment, or a settlement that spans the cycle boundary.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row info" data-code="narration_truncated" data-id="bank_0015" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">bank_0015</span>
+    <span class="code">narration_truncated</span>
+    <span class="amt">₹82,664.93</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">no settlement reconciles to 8266493 paisa on 2026-07-10</p>
+    <p class="action"><strong>Next:</strong> Pull the full advice from the bank portal — the UTR is usually recoverable there even when the statement feed truncates it.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90500228" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90500228</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹480.24</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90500228&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90500404" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90500404</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹2,805.05</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90500404&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90500471" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90500471</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹5,477.56</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90500471&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90500661" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90500661</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹110.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90500661 is ₹1,264.04 but ₹1,374.04 was captured (over by ₹110.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90500668" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90500668</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹62.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90500668 is ₹5,295.91 but ₹5,357.91 was captured (over by ₹62.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90500835" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90500835</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹342.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90500835 is ₹82,518.74 but ₹82,860.74 was captured (over by ₹342.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90501109" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501109</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹181.92</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90501109&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90501177" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501177</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹101.63</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90501177&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501241" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501241</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹191.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501241 is ₹1,051.71 but ₹1,242.71 was captured (over by ₹191.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501287" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501287</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹191.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501287 is ₹869.55 but ₹1,060.55 was captured (over by ₹191.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501380" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501380</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹257.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501380 is ₹6,484.50 but ₹6,741.50 was captured (over by ₹257.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90501390" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501390</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹1,277.28</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90501390&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501437" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501437</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹169.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501437 is ₹888.12 but ₹1,057.12 was captured (over by ₹169.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501448" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501448</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹125.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501448 is ₹84,154.57 but ₹84,279.57 was captured (over by ₹125.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501534" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501534</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹218.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501534 is ₹931.98 but ₹1,149.98 was captured (over by ₹218.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90501845" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501845</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹84,934.75</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90501845&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="missing_order" data-id="pay_90501882" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501882</span>
+    <span class="code">missing_order</span>
+    <span class="amt">₹725.76</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">settlement row references order &#x27;order_90501882&#x27;, which is absent from the merchant ledger</p>
+    <p class="action"><strong>Next:</strong> Settlement row has no matching order. Check whether the order was created outside the merchant system.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article>
+<article class="row warning" data-code="amount_mismatch" data-id="pay_90501966" tabindex="0">
+  <div class="head">
+    <span class="sev"></span>
+    <span class="ref">pay_90501966</span>
+    <span class="code">amount_mismatch</span>
+    <span class="amt">₹88.00</span>
+    <span class="done">reviewed</span>
+  </div>
+  <div class="body">
+    <p class="detail">order order_90501966 is ₹322.30 but ₹410.30 was captured (over by ₹88.00)</p>
+    <p class="action"><strong>Next:</strong> Order value and captured payment disagree. Look for a partial capture, or a discount applied after the order was written.</p>
+    <label class="mark"><input type="checkbox" class="cb"> mark reviewed</label>
+  </div>
+</article></div>
+</section>
+
+<section>
+  <h2>Rejected by the verifier <span class="count">5</span></h2>
+  <p class="note">Proposals the model made that the arithmetic refused. These are
+  not failures of the design — they are the design working.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>bank line</th><th>rule</th><th>confidence</th><th>evidence cited</th></tr></thead>
+    <tbody><tr><td class="m">bank_0004</td><td>llm_nomination[heuristic-offline]</td><td class="m">0.75</td><td>narration prefix &#x27;2994753355x14306&#x27; matches UTR 2994753355x14306</td></tr>
+<tr><td class="m">bank_0054</td><td>llm_nomination[heuristic-offline]</td><td class="m">0.75</td><td>narration prefix &#x27;2252148454n51885&#x27; matches UTR 2252148454n51885</td></tr>
+<tr><td class="m">bank_0078</td><td>llm_nomination[heuristic-offline]</td><td class="m">0.75</td><td>narration prefix &#x27;7557091542k64525&#x27; matches UTR 7557091542k64525</td></tr>
+<tr><td class="m">bank_0133</td><td>llm_nomination[heuristic-offline]</td><td class="m">0.75</td><td>narration prefix &#x27;7104350314x68927&#x27; matches UTR 7104350314x68927</td></tr>
+<tr><td class="m">bank_0156</td><td>llm_nomination[heuristic-offline]</td><td class="m">0.75</td><td>narration prefix &#x27;7816059031k49409&#x27; matches UTR 7816059031k49409</td></tr></tbody></table></div>
+</section>
+<section>
+  <h2>Input tax credit</h2>
+  <p class="note">GST charged on gateway fees is claimable only if Razorpay's invoice
+  reaches your GSTR-2B. Where it has not, the credit is not deferred — it is lost.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>period</th><th>invoice</th><th>status</th>
+    <th class="num">invoiced GST</th><th class="num">in 2B</th><th class="num">at risk</th></tr></thead>
+    <tbody><tr class=""><td class="m">2026-07</td><td class="m">RZP/2627/1200</td><td>claimable</td><td class="m num">₹8,155.23</td><td class="m num">₹8,155.23</td><td class="m num">₹0.00</td></tr>
+<tr class=""><td class="m">2026-08</td><td class="m">RZP/2627/1201</td><td>rounding_drift</td><td class="m num">₹9,259.28</td><td class="m num">₹9,259.28</td><td class="m num">₹0.00</td></tr>
+<tr class=""><td class="m">2026-09</td><td class="m">RZP/2627/1202</td><td>rounding_drift</td><td class="m num">₹9,994.32</td><td class="m num">₹9,994.32</td><td class="m num">₹0.00</td></tr></tbody></table></div>
+</section>
+<section>
+  <h2>Audit trail</h2>
+  <p class="note">Every match records the layer and rule that produced it, plus the
+  evidence. Nothing here is unattributable.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>bank line</th><th>settlement</th><th class="num">amount</th>
+    <th>layer</th><th>rule</th><th>conf</th><th>evidence</th></tr></thead>
+    <tbody><tr><td class="m">bank_0003</td><td class="m">setl_9050003</td><td class="m num">₹2,14,848.25</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=7526052244x55288 · net=21484825</td></tr>
+<tr><td class="m">bank_0005</td><td class="m">setl_9050005</td><td class="m num">₹78,957.22</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=2545960713v78052 · net=7895722</td></tr>
+<tr><td class="m">bank_0007</td><td class="m">setl_9050007</td><td class="m num">₹2,41,811.00</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=7703695637b61576 · net=24181100</td></tr>
+<tr><td class="m">bank_0012</td><td class="m">setl_9050012</td><td class="m num">₹1,04,203.28</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=1576269676v75793 · net=10420328</td></tr>
+<tr><td class="m">bank_0014</td><td class="m">setl_9050014</td><td class="m num">₹1,04,342.54</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=4721093016j11354 · net=10434254</td></tr>
+<tr><td class="m">bank_0016</td><td class="m">setl_9050016</td><td class="m num">₹46,343.60</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=1902499945b70682 · net=4634360</td></tr>
+<tr><td class="m">bank_0020</td><td class="m">setl_9050020</td><td class="m num">₹11,701.53</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=2829050071d12893 · net=1170153</td></tr>
+<tr><td class="m">bank_0025</td><td class="m">setl_9050025</td><td class="m num">₹1,40,507.32</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=4493173712m14480 · net=14050732</td></tr>
+<tr><td class="m">bank_0033</td><td class="m">setl_9050033</td><td class="m num">₹1,00,605.32</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=4708804983r56986 · net=10060532</td></tr>
+<tr><td class="m">bank_0034</td><td class="m">setl_9050034</td><td class="m num">₹24,716.41</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=6672075815p49785 · net=2471641</td></tr>
+<tr><td class="m">bank_0035</td><td class="m">setl_9050035</td><td class="m num">₹28,069.55</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=9882124696q11821 · net=2806955</td></tr>
+<tr><td class="m">bank_0036</td><td class="m">setl_9050036</td><td class="m num">₹24,545.08</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=4216223594d54015 · net=2454508</td></tr>
+<tr><td class="m">bank_0037</td><td class="m">setl_9050037</td><td class="m num">₹41,540.06</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=8739143292a98516 · net=4154006</td></tr>
+<tr><td class="m">bank_0038</td><td class="m">setl_9050038</td><td class="m num">₹1,05,656.58</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=8253706360g62397 · net=10565658</td></tr>
+<tr><td class="m">bank_0039</td><td class="m">setl_9050039</td><td class="m num">₹1,28,029.92</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3109735354b13160 · net=12802992</td></tr>
+<tr><td class="m">bank_0042</td><td class="m">setl_9050042</td><td class="m num">₹97,136.97</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3058024392d66694 · net=9713697</td></tr>
+<tr><td class="m">bank_0043</td><td class="m">setl_9050043</td><td class="m num">₹75,707.02</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=6367790245k39424 · net=7570702</td></tr>
+<tr><td class="m">bank_0045</td><td class="m">setl_9050045</td><td class="m num">₹12,636.21</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=7076633915k66204 · net=1263621</td></tr>
+<tr><td class="m">bank_0048</td><td class="m">setl_9050048</td><td class="m num">₹1,46,307.58</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3390690065a18440 · net=14630758</td></tr>
+<tr><td class="m">bank_0049</td><td class="m">setl_9050049</td><td class="m num">₹1,31,384.63</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=7385294077z73470 · net=13138463</td></tr>
+<tr><td class="m">bank_0052</td><td class="m">setl_9050052</td><td class="m num">₹54,921.27</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3590042294c21156 · net=5492127</td></tr>
+<tr><td class="m">bank_0053</td><td class="m">setl_9050053</td><td class="m num">₹1,27,983.43</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=1761325047g90737 · net=12798343</td></tr>
+<tr><td class="m">bank_0055</td><td class="m">setl_9050055</td><td class="m num">₹31,339.21</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=5574863453y46183 · net=3133921</td></tr>
+<tr><td class="m">bank_0056</td><td class="m">setl_9050056</td><td class="m num">₹76,503.19</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3889191498b91352 · net=7650319</td></tr>
+<tr><td class="m">bank_0059</td><td class="m">setl_9050059</td><td class="m num">₹8,857.22</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=5141685187f65387 · net=885722</td></tr>
+<tr><td class="m">bank_0062</td><td class="m">setl_9050062</td><td class="m num">₹86,619.15</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=1660602013p26873 · net=8661915</td></tr>
+<tr><td class="m">bank_0063</td><td class="m">setl_9050063</td><td class="m num">₹43,670.60</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=1834973241z42748 · net=4367060</td></tr>
+<tr><td class="m">bank_0064</td><td class="m">setl_9050064</td><td class="m num">₹97,838.71</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3874358042c46996 · net=9783871</td></tr>
+<tr><td class="m">bank_0065</td><td class="m">setl_9050065</td><td class="m num">₹46,498.58</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3710791595c68191 · net=4649858</td></tr>
+<tr><td class="m">bank_0068</td><td class="m">setl_9050068</td><td class="m num">₹67,690.11</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=2331452165g88020 · net=6769011</td></tr>
+<tr><td class="m">bank_0069</td><td class="m">setl_9050069</td><td class="m num">₹1,12,928.10</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3992815002r76791 · net=11292810</td></tr>
+<tr><td class="m">bank_0070</td><td class="m">setl_9050070</td><td class="m num">₹1,06,309.61</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=5826406745j77583 · net=10630961</td></tr>
+<tr><td class="m">bank_0071</td><td class="m">setl_9050071</td><td class="m num">₹68,462.39</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=8006450143n30882 · net=6846239</td></tr>
+<tr><td class="m">bank_0072</td><td class="m">setl_9050072</td><td class="m num">₹32,932.28</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=7460693590p80102 · net=3293228</td></tr>
+<tr><td class="m">bank_0074</td><td class="m">setl_9050074</td><td class="m num">₹1,77,332.35</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3010568982n76691 · net=17733235</td></tr>
+<tr><td class="m">bank_0075</td><td class="m">setl_9050075</td><td class="m num">₹51,407.77</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=1882078756f57054 · net=5140777</td></tr>
+<tr><td class="m">bank_0076</td><td class="m">setl_9050076</td><td class="m num">₹1,50,540.70</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=8114750335b23069 · net=15054070</td></tr>
+<tr><td class="m">bank_0077</td><td class="m">setl_9050077</td><td class="m num">₹71,599.59</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=3783021916x13815 · net=7159959</td></tr>
+<tr><td class="m">bank_0080</td><td class="m">setl_9050080</td><td class="m num">₹1,89,029.65</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=8535921433z36280 · net=18902965</td></tr>
+<tr><td class="m">bank_0081</td><td class="m">setl_9050081</td><td class="m num">₹1,75,687.49</td><td>L0_exact</td><td>utr_unique_and_amount_exact</td><td class="m">1.00</td><td>utr=6515468034k38450 · net=17568749</td></tr></tbody></table></div>
+  <p class="note">Showing 40 of 166.</p>
+</section>
+
+<footer>Quittance · every match carries the rule that produced it</footer>
+<script>
+const KEY='quittance.reviewed';
+const store=JSON.parse(localStorage.getItem(KEY)||'{}');
+const rows=[...document.querySelectorAll('.row')];
+let cur=-1;
+
+rows.forEach(r=>{
+  const id=r.dataset.id;
+  if(store[id]){r.classList.add('reviewed');r.querySelector('.cb').checked=true;}
+  r.querySelector('.head').addEventListener('click',()=>r.classList.toggle('open'));
+  r.querySelector('.cb').addEventListener('click',ev=>{
+    ev.stopPropagation();
+    toggle(r,ev.target.checked);
+  });
+});
+
+function toggle(r,on){
+  r.classList.toggle('reviewed',on);
+  r.querySelector('.cb').checked=on;
+  if(on)store[r.dataset.id]=new Date().toISOString();else delete store[r.dataset.id];
+  localStorage.setItem(KEY,JSON.stringify(store));
+}
+
+document.querySelectorAll('.chip[data-filter]').forEach(c=>{
+  c.addEventListener('click',()=>{
+    document.querySelectorAll('.chip[data-filter]').forEach(x=>x.classList.remove('active'));
+    c.classList.add('active');
+    const f=c.dataset.filter;
+    rows.forEach(r=>r.style.display=(f==='all'||r.dataset.code===f)?'':'none');
+  });
+});
+
+document.getElementById('hide-done').addEventListener('click',e=>{
+  const on=e.target.classList.toggle('active');
+  rows.forEach(r=>{if(r.classList.contains('reviewed'))r.style.display=on?'none':''});
+});
+
+document.getElementById('export').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify(store,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download='quittance-decisions.json';a.click();
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  const vis=rows.filter(r=>r.style.display!=='none');
+  if(!vis.length)return;
+  if(e.key==='j'||e.key==='k'){
+    cur=Math.max(0,Math.min(vis.length-1,cur+(e.key==='j'?1:-1)));
+    vis[cur].focus();vis[cur].scrollIntoView({block:'center',behavior:'smooth'});
+    e.preventDefault();
+  }
+  if(e.key==='r'&&cur>=0)toggle(vis[cur],!vis[cur].classList.contains('reviewed'));
+  if(e.key==='Enter'&&cur>=0)vis[cur].classList.toggle('open');
+});
+</script>
+</body></html>

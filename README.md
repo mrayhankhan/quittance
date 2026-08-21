@@ -5,7 +5,9 @@ is proven paid; the document that certifies it. 14th century, via Old French
 *quitance*. This is the receipt the settlement never gives you._
 
 Three-way settlement reconciliation for Indian merchants, built so that a
-language model can propose a match but never close the books.
+language model can propose a match but **never close the books** — a property
+that is enforced structurally, and tested against a fully compromised model on
+every push.
 
 **Razorpay AI Buildathon 2026 · Track 4 — AI Finance Controller**
 
@@ -65,14 +67,20 @@ Correctness
 Every number above is reproducible: the generator ships with its seed. Clone
 the repo, run `make demo`, get this.
 
-**96.5% of bank credits reconciled. Zero false matches. 100% of the matches
-were made without a language model.**
+**96.5% of bank credits reconciled. Zero false matches.**
 
-That last figure is not a disappointment. It is the finding.
+Three claims in this README are not assertions — they are measurements you can
+reproduce:
 
-The model proposed five matches this run. The verifier rejected all five. Not
-because they were hallucinations — most named the right settlement — but
-because the arithmetic didn't close to the paisa. See
+| Claim | Command | Result |
+|---|---|---|
+| The model works, and arithmetic still beats it | `make bench` | 48 matches vs heuristic's 30 — and Layer 1's 166 in 0.05s |
+| A compromised model cannot corrupt the ledger | `make attack` | 7/7 hijacked · **0/7 posted** |
+| The numbers above are real | `make demo` | 166/172 · 0 false matches |
+
+The model proposed five matches this run. The verifier rejected all five — not
+because they were hallucinations, most named the right settlement, but because
+the arithmetic didn't close to the paisa. See
 [the reserve-hold case](#why-layer-3-exists).
 
 ### Does the model actually earn its place?
@@ -119,6 +127,9 @@ triage (`j`/`k`/`r`), filter by type, export decisions as JSON.
 
 An exception that says "unexplained" and nothing else has moved the work, not
 done it.
+
+A generated copy is committed at [`docs/sample-report.html`](docs/sample-report.html)
+— download and open it, no install required.
 
 ## Architecture
 
